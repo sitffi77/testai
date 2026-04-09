@@ -6,10 +6,8 @@
 
 Приложение предназначено для врачей и позволяет:
 - Вводить клинические данные пациента
-- Загружать медицинские выписки (PDF, DOCX) для автоматического извлечения данных
 - Классифицировать тип боли с помощью ML-модели (XGBoost)
 - Получать интерпретацию результатов (SHAP)
-- Автоматически детектировать клинические флаги (красные, жёлтые, голубые, чёрные)
 - Сохранять результаты в базу данных MySQL
 
 ## Архитектура
@@ -23,9 +21,7 @@
 
 ## Установка
 
-### Вариант 1: Локальная установка
-
-#### 1. Создайте виртуальное окружение
+### 1. Создайте виртуальное окружение
 
 ```bash
 python -m venv venv
@@ -63,28 +59,10 @@ DB_PASSWORD=your_password
 CREATE DATABASE pain_diagnosis CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-#### 4. Запустите приложение
+### 4. Запустите приложение
 
 ```bash
 python main.py
-```
-
-### Вариант 2: Запуск через Docker
-
-См. подробную инструкцию в [DOCKER_README.md](DOCKER_README.md).
-
-#### Быстрый старт с Docker Compose
-
-```bash
-# Скопируйте шаблон переменных окружения
-cp .env.docker .env
-
-# Запустите все сервисы (БД + приложение в headless режиме)
-docker-compose --profile headless up -d
-
-# Для работы с GUI (только Linux)
-xhost +local:docker
-docker-compose --profile gui up -d
 ```
 
 ## Структура проекта
@@ -92,8 +70,6 @@ docker-compose --profile gui up -d
 ```
 pain_diagnosis_app/
 ├── config.py              # Конфигурация
-├── config/
-│   └── flags_config.yaml  # Правила клинических флагов
 ├── requirements.txt       # Зависимости
 ├── main.py               # Точка входа
 ├── controller.py         # Координатор MVC
@@ -102,25 +78,14 @@ pain_diagnosis_app/
 │   ├── ml_engine.py      # ML-движок (XGBoost + SHAP)
 │   └── db_models.py      # SQLAlchemy модели
 ├── database/
-│   ├── connection.py     # Подключение к БД, CRUD
-│   └── init.sql          # Скрипт инициализации БД
-├── parsers/
-│   ├── pdf_parser.py     # Парсинг PDF файлов
-│   └── docx_parser.py    # Парсинг DOCX файлов
-├── nlp/
-│   ├── models.py         # Модели данных для NLP
-│   ├── context_analyzer.py # Анализ контекста
-│   └── flag_detector.py  # Детектор клинических флагов
+│   └── connection.py     # Подключение к БД, CRUD
 ├── ui/
 │   ├── main_window.py    # Главное окно
 │   ├── input_form.py     # Форма ввода данных
 │   ├── results_view.py   # Отображение результатов
-│   ├── document_upload.py # Виджет загрузки документов
-│   ├── flags_dashboard.py # Панель клинических флагов
 │   └── widgets/          # Кастомные виджеты
 └── tests/
     ├── test_ml.py        # Тесты ML
-    ├── test_parsers.py   # Тесты парсеров
     └── test_ui_logic.py  # Тесты UI логики
 ```
 
