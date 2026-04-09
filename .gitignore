@@ -1,40 +1,61 @@
 ```
-# Python
+# Dependencies
+node_modules/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.pyc
 .Python
+env/
 venv/
 .venv/
+.ENV
+.ENV.local
 .env
 .env.local
 .env.*
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
 
-# Build and distribution artifacts
-dist/
+# Build artifacts
 build/
+dist/
+*.egg
 *.egg-info/
+*.so
+*.dylib
+*.dll
+*.exe
+*.o
+*.obj
+*.a
+*.lib
 
-# IDE and editor files
+# Docker
+.dockerignore
+!pain_diagnosis_app/.dockerignore
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+*.out
+*.pid
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Coverage
-coverage/
+*~
 ```
