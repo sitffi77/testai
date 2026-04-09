@@ -9,3 +9,12 @@ numpy>=1.24.0
 matplotlib>=3.7.0
 pytest>=7.3.0
 python-dotenv>=1.0.0
+
+# Document parsing (NEW)
+pdfplumber>=0.9.0
+python-docx>=0.8.10
+
+# Configuration and utilities
+PyYAML>=6.0
+Pillow>=9.4.0
+scikit-learn>=1.2.0
