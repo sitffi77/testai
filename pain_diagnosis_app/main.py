@@ -122,7 +122,7 @@ def main() -> int:
     window = MainWindow()
     
     # Connect controller signals to UI slots
-    controller = get_controller()
+    controller = get_controller(main_window=window)
     
     # When form submits data, run prediction
     window.diagnose_requested.connect(controller.run_prediction)
@@ -182,6 +182,14 @@ def main() -> int:
                 )
     
     window.save_requested.connect(on_save_requested)
+    
+    # Connect training tab signals
+    def on_training_started():
+        """Handle training start request from training tab."""
+        controller.start_training()
+    
+    if hasattr(window, 'training_view'):
+        window.training_view.start_training_signal.connect(on_training_started)
 
     # Show window
     window.show()

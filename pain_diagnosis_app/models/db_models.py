@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models for Pain Diagnosis Application.
 
-Defines ORM models for patients, clinical_data, scales, and diagnoses tables.
+Defines ORM models for patients, clinical_data, scales, diagnoses, and training_data tables.
 Uses SQLAlchemy 2.0 declarative style.
 """
 
@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     JSON,
+    Boolean,
     create_engine,
 )
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
@@ -47,6 +48,7 @@ class Patient(Base):
 
     clinical_records = relationship("ClinicalData", back_populates="patient", cascade="all, delete-orphan")
     diagnoses = relationship("Diagnosis", back_populates="patient", cascade="all, delete-orphan")
+    training_samples = relationship("TrainingData", back_populates="patient", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Patient(id={self.id}, full_name='{self.full_name}')>"
@@ -145,6 +147,8 @@ class Diagnosis(Base):
         probabilities_json: JSON dict of class probabilities.
         shap_values_json: JSON dict of SHAP feature contributions.
         interpretation: Human-readable interpretation.
+        is_verified: Whether the diagnosis was verified by a doctor.
+        verified_by: Name of the doctor who verified.
         created_at: Record creation timestamp.
     """
 
@@ -159,6 +163,8 @@ class Diagnosis(Base):
     probabilities_json = Column(JSON, nullable=True)
     shap_values_json = Column(JSON, nullable=True)
     interpretation = Column(Text, nullable=True)
+    is_verified = Column(Boolean, default=False)
+    verified_by = Column(String(50), nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -167,6 +173,69 @@ class Diagnosis(Base):
 
     def __repr__(self) -> str:
         return f"<Diagnosis(id={self.id}, predicted_class='{self.predicted_class}')>"
+
+
+class TrainingData(Base):
+    """
+    Training data model representing the training_data table.
+    
+    Stores labeled data for model fine-tuning.
+    Populated when a doctor confirms or corrects a diagnosis.
+
+    Attributes:
+        id: Primary key.
+        patient_id: Foreign key to patients table.
+        clinical_data_id: Foreign key to clinical_data table (optional).
+        features_json: JSON serialized feature vector after preprocessing.
+        true_label: The correct diagnosis label according to the doctor.
+        source: Source of the data ('manual', 'import', 'correction', 'verification').
+        comment: Optional comment from the doctor.
+        created_at: Record creation timestamp.
+    """
+
+    __tablename__ = "training_data"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    clinical_data_id = Column(Integer, ForeignKey("clinical_data.id"), nullable=True)
+    
+    # Input features (serialized JSON feature vector after preprocessing)
+    features_json = Column(JSON, nullable=False)
+    
+    # Target label (true diagnosis according to doctor)
+    true_label = Column(String(50), nullable=False)
+    
+    # Metadata
+    source = Column(String(20), default='manual')  # 'manual', 'import', 'correction', 'verification'
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    patient = relationship("Patient", back_populates="training_samples")
+
+    def __repr__(self) -> str:
+        return f"<TrainingData(id={self.id}, patient_id={self.patient_id}, true_label='{self.true_label}')>"
+
+
+class FlagResultModel(Base):
+    """
+    Flag result model representing the flags table.
+    
+    Stores red/yellow/blue/black flag检测结果 for patient safety.
+    """
+
+    __tablename__ = "flags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    flag_type = Column(String(20), nullable=False)  # red, yellow, blue, black
+    flag_id = Column(Integer, nullable=True)
+    confidence = Column(String(10), nullable=True)
+    context_snippet = Column(Text, nullable=True)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(20), default='active')
+
+    def __repr__(self) -> str:
+        return f"<FlagResultModel(id={self.id}, flag_type='{self.flag_type}')>"
 
 
 def get_engine() -> Any:

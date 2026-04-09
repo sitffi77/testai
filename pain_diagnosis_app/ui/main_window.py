@@ -26,6 +26,7 @@ from PyQt6.QtGui import QAction, QFont
 from config import WINDOW_TITLE, WINDOW_WIDTH, WINDOW_HEIGHT
 from ui.input_form import ClinicalInputForm
 from ui.results_view import ResultsView
+from ui.training_view import TrainingView
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +86,11 @@ class MainWindow(QMainWindow):
         # Create tabs
         self.input_form = ClinicalInputForm()
         self.results_view = ResultsView()
+        self.training_view = TrainingView()
 
         self.tabs.addTab(self.input_form, "📋 Ввод данных")
         self.tabs.addTab(self.results_view, "📊 Результаты")
+        self.tabs.addTab(self.training_view, "🎓 Обучение модели")
 
         # Status bar
         self.status_bar = QStatusBar()

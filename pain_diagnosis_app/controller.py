@@ -13,7 +13,7 @@ from PyQt6.QtGui import QImage, QPixmap
 
 from models.ml_engine import get_ml_engine, MLEngine
 from database.connection import get_db_manager, DatabaseManager
-from worker import MLWorker
+from worker import MLWorker, TrainingWorker
 from config import DEFAULT_MODEL_PATH
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class Controller(QObject):
         ml_engine: ML engine instance.
         db_manager: Database manager instance.
         current_worker: Current ML worker thread if running.
+        training_worker: Current training worker thread if running.
     """
 
     # Signals for UI updates
@@ -46,7 +47,7 @@ class Controller(QObject):
     db_operation_completed = pyqtSignal(dict)
     status_message = pyqtSignal(str)
 
-    def __init__(self) -> None:
+    def __init__(self, main_window=None) -> None:
         """Initialize the controller with ML engine and database manager."""
         super().__init__()
         
@@ -54,6 +55,8 @@ class Controller(QObject):
         self.db_manager: DatabaseManager = get_db_manager()
         
         self.current_worker: Optional[MLWorker] = None
+        self.training_worker: Optional[Any] = None
+        self.main_window = main_window
         self._is_initialized = False
         
         logger.info("Controller initialized")
@@ -306,10 +309,173 @@ class Controller(QObject):
         
         return self.db_manager.get_all_patients()
 
+    def start_training(self) -> None:
+        """Start the model fine-tuning process asynchronously."""
+        if self.training_worker and self.training_worker.is_running():
+            logger.warning("Training already in progress")
+            self.status_message.emit("Обучение уже запущено")
+            return
+        
+        logger.info("Starting training process...")
+        self.status_message.emit("Запуск процесса обучения...")
+        
+        self.training_worker = TrainingWorker(model_path=str(DEFAULT_MODEL_PATH))
+        self.training_worker.log_update.connect(self._on_training_log_update)
+        self.training_worker.finished.connect(self._on_training_finished)
+        self.training_worker.start()
+    
+    def _on_training_log_update(self, message: str) -> None:
+        """Handle training log updates."""
+        logger.info(f"Training: {message}")
+        self.status_message.emit(message)
+        
+        # Forward to training view if available
+        if self.main_window and hasattr(self.main_window, 'training_view'):
+            self.main_window.training_view.log_message(message)
+    
+    def _on_training_finished(self, success: bool, message: str) -> None:
+        """Handle training completion."""
+        if success:
+            logger.info(f"Training completed successfully: {message}")
+            self.status_message.emit("Обучение завершено успешно")
+            
+            # Reload the model in ML engine
+            try:
+                self.ml_engine.load_model(str(DEFAULT_MODEL_PATH))
+                logger.info("New model loaded into ML engine")
+            except Exception as e:
+                logger.error(f"Failed to reload model: {e}")
+            
+            # Update stats
+            self.refresh_training_stats()
+        else:
+            logger.error(f"Training failed: {message}")
+            self.status_message.emit(f"Ошибка обучения: {message}")
+        
+        # Notify training view
+        if self.main_window and hasattr(self.main_window, 'training_view'):
+            self.main_window.training_view.training_finished(success, message)
+    
+    def refresh_training_stats(self) -> None:
+        """Refresh training statistics from database."""
+        if not self.db_manager.is_initialized():
+            return
+        
+        try:
+            session = self.db_manager.get_session()
+            from models.db_models import TrainingData
+            
+            count = session.query(TrainingData).count()
+            
+            # Get unique classes
+            distinct_labels = session.query(TrainingData.true_label).distinct().all()
+            num_classes = len(distinct_labels)
+            
+            # Get last accuracy (would need to store this in a separate table or config)
+            # For now, we just show sample count and classes
+            session.close()
+            
+            if self.main_window and hasattr(self.main_window, 'training_view'):
+                self.main_window.training_view.update_stats(count, num_classes, None)
+                
+        except Exception as e:
+            logger.error(f"Failed to refresh training stats: {e}")
+
+    def submit_diagnosis_feedback(
+        self, 
+        diagnosis_id: int, 
+        is_correct: bool, 
+        true_label: str = None
+    ) -> bool:
+        """
+        Save doctor feedback for future training.
+        
+        Args:
+            diagnosis_id: ID of the diagnosis record.
+            is_correct: Whether the predicted diagnosis was correct.
+            true_label: Correct label if different from prediction.
+            
+        Returns:
+            True if saved successfully, False otherwise.
+        """
+        if not self.db_manager.is_initialized():
+            logger.warning("Database not initialized, cannot save feedback")
+            return False
+        
+        try:
+            session = self.db_manager.get_session()
+            from models.db_models import Diagnosis, ClinicalData, Patient, TrainingData
+            from sqlalchemy.orm import joinedload
+            
+            # Get diagnosis with related data
+            diagnosis = session.query(Diagnosis).options(
+                joinedload(Diagnosis.clinical_data).joinedload(ClinicalData.patient)
+            ).get(diagnosis_id)
+            
+            if not diagnosis:
+                logger.error(f"Diagnosis {diagnosis_id} not found")
+                return False
+            
+            clinical_data = diagnosis.clinical_data
+            patient = clinical_data.patient
+            
+            # Extract features using ML engine preprocessing
+            features_dict = {
+                "age": clinical_data.age or 0,
+                "pain_intensity": clinical_data.pain_intensity or 0,
+                "duration_days": clinical_data.duration_days or 0,
+                "frequency_per_week": clinical_data.frequency_per_week or 0,
+                "sleep_hours": clinical_data.sleep_hours or 0,
+                "stress_level": clinical_data.stress_level or 0,
+                "gender": patient.gender or "unknown",
+                "pain_location": clinical_data.pain_location or "unknown",
+                "pain_type": clinical_data.pain_type or "unknown",
+                "trigger_factor": clinical_data.trigger_factor or "none",
+                "relief_factor": clinical_data.relief_factor or "none",
+                "medication_use": clinical_data.medication_use or "none",
+            }
+            
+            # Preprocess to get feature vector
+            df_features = self.ml_engine.preprocess(features_dict)
+            features_json = df_features.to_dict(orient='records')[0]
+            
+            # Determine target label
+            target_label = true_label if true_label and not is_correct else diagnosis.predicted_class
+            
+            # Create training sample
+            source = 'correction' if not is_correct else 'verification'
+            new_sample = TrainingData(
+                patient_id=patient.id,
+                clinical_data_id=clinical_data.id,
+                features_json=features_json,
+                true_label=target_label,
+                source=source
+            )
+            
+            session.add(new_sample)
+            session.commit()
+            
+            logger.info(f"Saved training sample: {source} for patient {patient.id}")
+            
+            # Update stats if training view is available
+            self.refresh_training_stats()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving feedback: {e}")
+            session.rollback()
+            return False
+        finally:
+            session.close()
+
     def cleanup(self) -> None:
         """Clean up resources before application exit."""
         if self.current_worker and self.current_worker.is_running():
             self.current_worker.stop()
+        
+        if self.training_worker and self.training_worker.is_running():
+            self.training_worker.stop()
         
         logger.info("Controller cleanup completed")
 
@@ -318,14 +484,17 @@ class Controller(QObject):
 _controller_instance: Optional[Controller] = None
 
 
-def get_controller() -> Controller:
+def get_controller(main_window=None) -> Controller:
     """
     Get or create the singleton controller instance.
+
+    Args:
+        main_window: Optional reference to main window for UI updates.
 
     Returns:
         Controller instance.
     """
     global _controller_instance
     if _controller_instance is None:
-        _controller_instance = Controller()
+        _controller_instance = Controller(main_window=main_window)
     return _controller_instance
