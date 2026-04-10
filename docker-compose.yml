@@ -1,0 +1,24 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: clinical_diagnosis_app
+    volumes:
+      - ./models:/app/models  # Важно: сохраняет модели и бэкапы
+      - ./config:/app/config  # Конфигурационные файлы
+      - ./clinical_data.db:/app/clinical_data.db  # База данных
+    environment:
+      - DATABASE_URL=sqlite:///./clinical_data.db
+      - PYTHONUNBUFFERED=1
+    # Для GUI приложений может потребоваться доступ к X-серверу
+    # В Linux раскомментируйте следующие строки:
+    # network_mode: host
+    # volumes:
+    #   - /tmp/.X11-unix:/tmp/.X11-unix
+    #   - $HOME/.Xauthority:/root/.Xauthority
+    # environment:
+    #   - DISPLAY=$DISPLAY
+    stdin_open: true
+    tty: true
